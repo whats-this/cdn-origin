@@ -132,7 +132,7 @@ func main() {
 	log.Info("Attempting to listen on " + listenAddr)
 	server := &fasthttp.Server{
 		Handler:                       h,
-		Name:                          "whats-this/cdn-origin/1.0.0",
+		Name:                          "whats-this/cdn-origin/1.0.1",
 		ReadBufferSize:                1024 * 6, // 6 KB
 		ReadTimeout:                   time.Minute * 30,
 		WriteTimeout:                  time.Minute * 30,
@@ -167,7 +167,9 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	var content_type sql.NullString
 	var long_url sql.NullString
 	var object_type int
-	err := db.QueryRow(`SELECT backend_file_id, content_type, long_url, "type" FROM objects WHERE bucket='0' AND "key"=$1 LIMIT 1`, string(ctx.Path())).Scan(&backend_file_id, &content_type, &long_url, &object_type)
+	err := db.QueryRow(
+		`SELECT backend_file_id, content_type, long_url, "type" FROM objects WHERE bucket_key=$1 LIMIT 1`,
+		fmt.Sprintf("public%s", ctx.Path())).Scan(&backend_file_id, &content_type, &long_url, &object_type)
 	switch {
 	case err == sql.ErrNoRows:
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
