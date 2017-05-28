@@ -13,8 +13,8 @@ import (
 
 	"github.com/whats-this/cdn-origin/weed"
 
-	_ "github.com/lib/pq"
 	log "github.com/Sirupsen/logrus"
+	_ "github.com/lib/pq"
 	"github.com/valyala/fasthttp"
 )
 
@@ -231,7 +231,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"err":      err,
-					"long_url": dest_url.String,
+					"dest_url": dest_url.String,
 				}).Warn("failed to generate redirect preview HTML to send to client")
 				ctx.SetContentType("text/plain; charset=utf8")
 				fmt.Fprintf(ctx, "Failed to generate preview page, destination URL: %s", dest_url.String)
@@ -247,7 +247,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"err":      err,
-					"long_url": dest_url.String,
+					"dest_url": dest_url.String,
 				}).Warn("failed to generate redirect HTML to send to client")
 				ctx.SetContentType("text/plain; charset=utf8")
 				fmt.Fprintf(ctx, "Failed to generate HTML fallback page, destination URL: %s", dest_url.String)
