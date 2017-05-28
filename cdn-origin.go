@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -8,14 +9,13 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/whats-this/cdn-origin/weed"
 
-	"bytes"
-	log "github.com/Sirupsen/logrus"
 	_ "github.com/lib/pq"
+	log "github.com/Sirupsen/logrus"
 	"github.com/valyala/fasthttp"
-	"unsafe"
 )
 
 // redirectHTML is the html/template template for generating redirect HTML.
@@ -24,7 +24,7 @@ const redirectHTML = `<html><head><meta charset=UTF-8 /><meta http-equiv=refresh
 var redirectHTMLTemplate *template.Template
 
 // redirectPreviewHTML is the html/template template for generating redirect preview HTML.
-const redirectPreviewHTML = `<html><head><meta charset=UTF-8 /><title>Redirect Preview</title></head><body><p>This link goes to <code>{{.}}</code>. If you would like to visit this link, click <a href="{{.}}">here</a> to go to the destination..</p></body></html>`
+const redirectPreviewHTML = `<html><head><meta charset=UTF-8 /><title>Redirect Preview</title></head><body><p>This link goes to <code>{{.}}</code>. If you would like to visit this link, click <a href="{{.}}">here</a> to go to the destination.</p></body></html>`
 
 var redirectPreviewHTMLTemplate *template.Template
 
@@ -112,7 +112,7 @@ func main() {
 		return
 	}
 
-	// Set redirect template values
+	// Parse redirect templates
 	redirectHTMLTemplate, err = template.New("redirectHTML").Parse(redirectHTML)
 	if err != nil {
 		log.WithField("err", err).Fatal("failed to parse redirectHTML template")
@@ -132,7 +132,7 @@ func main() {
 	log.Info("Attempting to listen on " + listenAddr)
 	server := &fasthttp.Server{
 		Handler:                       h,
-		Name:                          "whats-this/cdn-origin/1.0.1",
+		Name:                          "whats-this/cdn-origin/0.1.0",
 		ReadBufferSize:                1024 * 6, // 6 KB
 		ReadTimeout:                   time.Minute * 30,
 		WriteTimeout:                  time.Minute * 30,
@@ -165,11 +165,11 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	// Fetch object from database
 	var backend_file_id sql.NullString
 	var content_type sql.NullString
-	var long_url sql.NullString
+	var dest_url sql.NullString
 	var object_type int
 	err := db.QueryRow(
-		`SELECT backend_file_id, content_type, long_url, "type" FROM objects WHERE bucket_key=$1 LIMIT 1`,
-		fmt.Sprintf("public%s", ctx.Path())).Scan(&backend_file_id, &content_type, &long_url, &object_type)
+		`SELECT backend_file_id, content_type, dest_url, "type" FROM objects WHERE bucket_key=$1 LIMIT 1`,
+		fmt.Sprintf("public%s", ctx.Path())).Scan(&backend_file_id, &content_type, &dest_url, &object_type)
 	switch {
 	case err == sql.ErrNoRows:
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
@@ -217,9 +217,9 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			fmt.Fprint(ctx, "500 Internal Server Error")
 		}
 
-	case 1: // short_url
-		if !long_url.Valid {
-			log.Warn("encountered short_url object with NULL long_url")
+	case 1: // redirect
+		if !dest_url.Valid {
+			log.Warn("encountered redirect object with NULL dest_url")
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 			ctx.SetContentType("text/plain; charset=utf8")
 			fmt.Fprint(ctx, "500 Internal Server Error")
@@ -227,14 +227,14 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 
 		if ctx.QueryArgs().Has("preview") {
 			buf := new(bytes.Buffer)
-			err := redirectPreviewHTMLTemplate.Execute(buf, long_url.String)
+			err := redirectPreviewHTMLTemplate.Execute(buf, dest_url.String)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"err":      err,
-					"long_url": long_url.String,
+					"long_url": dest_url.String,
 				}).Warn("failed to generate redirect preview HTML to send to client")
 				ctx.SetContentType("text/plain; charset=utf8")
-				fmt.Fprintf(ctx, "Failed to generate preview page, long URL: %s", long_url.String)
+				fmt.Fprintf(ctx, "Failed to generate preview page, destination URL: %s", dest_url.String)
 				return
 			}
 			b := buf.Bytes()
@@ -243,20 +243,23 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			fmt.Fprint(ctx, s)
 		} else {
 			buf := new(bytes.Buffer)
-			err := redirectHTMLTemplate.Execute(buf, long_url.String)
+			err := redirectHTMLTemplate.Execute(buf, dest_url.String)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"err":      err,
-					"long_url": long_url.String,
+					"long_url": dest_url.String,
 				}).Warn("failed to generate redirect HTML to send to client")
 				ctx.SetContentType("text/plain; charset=utf8")
-				fmt.Fprintf(ctx, "Failed to generate HTML fallback page, long URL: %s", long_url.String)
+				fmt.Fprintf(ctx, "Failed to generate HTML fallback page, destination URL: %s", dest_url.String)
 				return
 			}
 			b := buf.Bytes()
 			s := *(*string)(unsafe.Pointer(&b))
+			ctx.SetStatusCode(fasthttp.StatusMovedPermanently)
 			ctx.SetContentType("text/html; charset=utf8")
+			ctx.Response.Header.Set("Location", dest_url.String)
 			fmt.Fprint(ctx, s)
+
 		}
 	}
 }
