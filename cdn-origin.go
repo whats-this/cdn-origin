@@ -132,7 +132,7 @@ func main() {
 	log.Info("Attempting to listen on " + listenAddr)
 	server := &fasthttp.Server{
 		Handler:                       h,
-		Name:                          "whats-this/cdn-origin/0.1.0",
+		Name:                          "whats-this/cdn-origin/0.1.1",
 		ReadBufferSize:                1024 * 6, // 6 KB
 		ReadTimeout:                   time.Minute * 30,
 		WriteTimeout:                  time.Minute * 30,
