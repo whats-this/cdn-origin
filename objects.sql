@@ -4,14 +4,14 @@ CREATE TABLE IF NOT EXISTS objects (
   bucket VARCHAR(20) NOT NULL, -- uint64 bucket ID ("public" for public bucket)
   "key" VARCHAR(1024) NOT NULL, -- Full bucket path to file (including directory)
   dir VARCHAR(1024) NOT NULL, -- Directory of file (with trailing slash)
-  "type" integer NOT NULL DEFAULT 0, -- Object type enumerable (0 = file, 1 = short_url)
+  "type" integer NOT NULL DEFAULT 0, -- Object type enumerable (0 = file, 1 = redirect)
   backend_file_id VARCHAR(33) DEFAULT NULL, -- SeaweedFS file ID (only when object.type == 0)
-  long_url VARCHAR(1024) DEFAULT NULL, -- Long URL (only when object.type == 1)
+  dest_url VARCHAR(1024) DEFAULT NULL, -- Destination URL for redirect object (only when object.type == 1)
   content_type VARCHAR(255) DEFAULT 'application/octet-stream', -- Content-Type of file
   content_length INT DEFAULT NULL, -- Content-Length of file
   auth_hash VARCHAR(64) DEFAULT NULL, -- Authentication hash: sha256(user.id + password + object.id)
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, -- File creation timestamp
-  md5_hash VARCHAR(32) DEFAULT NULL -- MD5 hash of file contents (or long URL)
+  md5_hash VARCHAR(32) DEFAULT NULL -- MD5 hash of file contents (or destination URL)
 );
 
 -- Test file object: /index.md
@@ -28,7 +28,7 @@ INSERT INTO objects (bucket_key, bucket, key, dir, type, backend_file_id, conten
 );
 
 -- Test short_url object: /short_link
-INSERT INTO objects (bucket_key, bucket, key, dir, type, long_url, content_type) VALUES (
+INSERT INTO objects (bucket_key, bucket, key, dir, type, dest_url, content_type) VALUES (
   'public/short_path',
   'public',
   '/short_path',
