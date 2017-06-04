@@ -16,5 +16,8 @@
 # Built package binary
 cdn-origin
 
+# Package configuration file (not including sample configuration)
+cdn-origin.toml
+
 # JetBrains .idea
 .idea/

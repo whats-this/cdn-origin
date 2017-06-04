@@ -1,0 +1,29 @@
+[cdnUtil]
+    # Authentication token for accessing /.cdn-util (supplied with query
+    # parameter "authKey")
+    authKey = "secret"
+
+    # Serve Prometheus metrics (/.cdn-util/prometheus/metrics)
+    serveMetrics = true
+
+[http]
+    # Enable transparent response compression (only when the client Accepts it)
+    compressResponse = true
+
+    # TCP address to listen to for HTTP requests
+    listenAddress = ":8001"
+
+[log]
+    # Enable debug mode (logs requests and prints other information)
+    debug = false
+
+[database]
+    # PostgreSQL connection URL, see
+    # https://godoc.org/github.com/lib/pq#hdr-Connection_String_Parameters for
+    # more information
+    connectionURL = "postgres://postgres:password@localhost/whats_this?sslmode=disable"
+
+[seaweed]
+    # SeaweedFS master URL (used for looking up volumes, volumes must be
+    # accessible by their publicUrl)
+    masterURL = "http://localhost:9333"

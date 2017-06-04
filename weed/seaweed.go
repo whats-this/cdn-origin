@@ -55,7 +55,7 @@ func New(masterURI string, lookupTimeout time.Duration) *Seaweed {
 	}
 }
 
-func (s *Seaweed) Get(fid string, query string, writer io.Writer) (int, error) {
+func (s *Seaweed) Get(writer io.Writer, fid string, query string) (int, error) {
 	volumeURL := s.lookupVolume(strings.Split(fid, ",")[0])
 	if volumeURL == "" {
 		return 500, errors.New("failed to retrieve volume URL")
@@ -84,7 +84,10 @@ func (s *Seaweed) Get(fid string, query string, writer io.Writer) (int, error) {
 
 	// Perform request
 	err := fasthttp.Do(req, res)
-	if err == nil && res.StatusCode() == fasthttp.StatusOK {
+	if err != nil {
+		return 0, err
+	}
+	if res.StatusCode() == fasthttp.StatusOK {
 		if err := res.BodyWriteTo(writer); err != nil {
 			log.WithField("err", err).Warn("failed to set body writer for response")
 			return fasthttp.StatusInternalServerError, err
