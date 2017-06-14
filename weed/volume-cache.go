@@ -28,8 +28,8 @@ func (v *VolumeCache) Get(id uint32) []string {
 
 // GetNext returns the n+1th location URL for the given volume ID, n is tracked internally.
 func (v *VolumeCache) GetNext(id uint32) string {
-	v.RLock()
-	defer v.RUnlock()
+	v.Lock()
+	defer v.Unlock()
 	vol, ok := v.volumeCache[id]
 	volLen := len(vol)
 	if !ok || volLen == 0 {
@@ -39,7 +39,7 @@ func (v *VolumeCache) GetNext(id uint32) string {
 	if n >= volLen {
 		n = 0
 	}
-	defer func() { v.next[id] = n + 1 }()
+	v.next[id] = n + 1
 	return vol[n]
 }
 
