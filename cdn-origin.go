@@ -288,14 +288,14 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	if log.GetLevel() == log.DebugLevel {
 		log.WithFields(log.Fields{
 			"connRequestNumber": ctx.ConnRequestNum(),
-			// "connTime":		ctx.ConnTime(),
+			// "connTime":       ctx.ConnTime(),
 			"method": string(ctx.Method()),
-			// "path":	  path,
+			// "path":           path,
 			"queryString": ctx.QueryArgs(),
 			"remoteIP":    ctx.RemoteIP(),
 			"requestURI":  string(ctx.RequestURI()),
-			// "time":		ctx.Time(),
-			// "userAgent":		string(ctx.UserAgent()),
+			// "time":           ctx.Time(),
+			// "userAgent":      string(ctx.UserAgent()),
 		}).Debug("request received")
 	}
 
@@ -329,18 +329,20 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		hostBytes := ctx.Request.Header.Peek(host)
 		if len(hostBytes) != 0 {
 			hostStr := string(hostBytes)
-			if useDomainMetricsWhitelist {
-				hostSplit := strings.Split(hostStr, periodStr)
-				if match := domainMetricsWhitelist.GetMatch(hostSplit); match != "" {
-					if strings.HasPrefix(match, asteriskPeriodStr) {
-						hostSplit[0] = asteriskStr
+			go func() {
+				if useDomainMetricsWhitelist {
+					hostSplit := strings.Split(hostStr, periodStr)
+					if match := domainMetricsWhitelist.GetMatch(hostSplit); match != "" {
+						if strings.HasPrefix(match, asteriskPeriodStr) {
+							hostSplit[0] = asteriskStr
+						}
+						fmt.Println(match, hostSplit)
+						prometheus.HTTPRequestsTotal.With(prom.Labels{host: strings.Join(hostSplit, periodStr)}).Inc()
 					}
-					fmt.Println(match, hostSplit)
-					prometheus.HTTPRequestsTotal.With(prom.Labels{host: strings.Join(hostSplit, periodStr)}).Inc()
+				} else {
+					prometheus.HTTPRequestsTotal.With(prom.Labels{host: hostStr}).Inc()
 				}
-			} else {
-				prometheus.HTTPRequestsTotal.With(prom.Labels{host: hostStr}).Inc()
-			}
+			}()
 		}
 	}
 
