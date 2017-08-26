@@ -13,6 +13,20 @@
     # TCP address to listen to for HTTP requests
     listenAddress = ":8001"
 
+[metrics]
+    # Enable metrics collection domain whitelist. When this is enabled, metrics
+    # will only be collected for requests with a Host header matching a domain
+    # in the list below.
+    enableWhitelist = false
+
+    # Metrics collection domain whitelist. Wildcards are supported at the
+    # beginning of each domain.
+    domainWhitelist = [
+        "example.com",
+        "*.example.net",
+        "test.example.org"
+    ]
+
 [log]
     # Enable debug mode (logs requests and prints other information)
     debug = false

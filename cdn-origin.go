@@ -25,8 +25,15 @@ const version = "0.2.0"
 
 // HTTP header strings.
 const (
-	accept = "Accept"
-	host   = "Host"
+	accept = "accept"
+	host   = "host"
+)
+
+// Host domain match strings.
+const (
+	asteriskStr       = "*"
+	asteriskPeriodStr = "*."
+	periodStr         = "."
 )
 
 // cdnUtil is the path to CDN utilities endpoint.
@@ -44,6 +51,54 @@ var redirectHTMLTemplate *template.Template
 const redirectPreviewHTML = `<html><head><meta charset="UTF-8" /><title>Redirect Preview</title></head><body><p>This link goes to <code>{{.}}</code>. If you would like to visit this link, click <a href="{{.}}">here</a> to go to the destination.</p></body></html>`
 
 var redirectPreviewHTMLTemplate *template.Template
+
+// treeNode is used for domain whitelisting.
+type treeNode struct {
+	Leaf      bool
+	Value     string
+	FullValue string
+	SubNodes  []*treeNode
+}
+
+func (t *treeNode) FindOrCreateSubNode(v string) *treeNode {
+	if t.SubNodes == nil {
+		t.SubNodes = []*treeNode{}
+	}
+
+	for _, n := range t.SubNodes {
+		if !n.Leaf && n.Value == v {
+			return n
+		}
+	}
+	node := &treeNode{Value: v}
+	t.SubNodes = append(t.SubNodes, node)
+	return node
+}
+
+func (t *treeNode) GetMatch(s []string) string {
+	if t.Leaf || len(t.SubNodes) == 0 || len(s) == 0 {
+		return ""
+	}
+
+	for _, node := range t.SubNodes {
+		if node.Value == asteriskStr || node.Value == s[0] {
+			if node.Leaf {
+				return node.FullValue
+			}
+			if match := node.GetMatch(s[1:]); match != "" {
+				return match
+			}
+		}
+	}
+
+	return ""
+}
+
+// Domain whitelist configuration
+var (
+	domainMetricsWhitelist    *treeNode
+	useDomainMetricsWhitelist bool
+)
 
 func init() {
 	// Read in configuration
@@ -74,6 +129,13 @@ func init() {
 	viper.BindPFlag("log.debug", flags.Lookup("debug"))
 	viper.BindEnv("log.debug", "DEBUG")
 
+	// metrics.domainWhitelist (string[]=[]): domains to whitelist for metric collection (only through config file)
+
+	// metrics.enableDomainWhitelist (bool=false): enable domain whitelist for metrics (metrics.domainWhitelist)
+	flags.Bool("metrics.enableWhitelist", false, "Enable domain whitelist for metric collection")
+	viper.BindPFlag("metrics.enableWhitelist", flags.Lookup("debug"))
+	viper.BindEnv("metrics.enableWhitelist", "METRICS_ENABLE_WHITELIST")
+
 	// database.connectionURL* (string): PostgreSQL connection URL
 	flags.String("database-connection-url", "", "* PostgreSQL connection URL")
 	viper.BindPFlag("database.connectionURL", flags.Lookup("database-connection-url"))
@@ -103,7 +165,7 @@ func init() {
 
 	// Print configuration variables to debug
 	log.WithFields(log.Fields{
-		"cdnUtil.authKey":        len(viper.GetString("cdnUtil.authKey")) != 0,
+		"cdnUtil.authKey":        viper.GetString("cdnUtil.authKey"),
 		"cdnUtil.serveMetrics":   viper.GetBool("cdnUtil.serveMetrics"),
 		"database.connectionURL": viper.GetString("database.connectionURL"),
 		"http.compressResponse":  viper.GetBool("http.compressResponse"),
@@ -118,6 +180,58 @@ func init() {
 	}
 	if len(viper.GetString("seaweed.masterURL")) == 0 {
 		log.Fatal("seaweed.masterURL is required")
+	}
+
+	// metrics.enableWhitelist configuration
+	if viper.GetBool("metrics.enableWhitelist") {
+		whitelist := []string{}
+
+		switch w := viper.Get("metrics.domainWhitelist").(type) {
+		case []interface{}:
+			for _, s := range w {
+				whitelist = append(whitelist, strings.TrimSpace(fmt.Sprint(s)))
+			}
+			break
+		default:
+			log.Warn("metrics.domainWhitelist is not an array, ignoring (no metrics will be recorded)")
+		}
+
+		// NOTE: using arrays because the provided order is important (maps would be a check if part in in map,
+		// then check for *, which works but doesn't maintain order)
+		tree := &treeNode{SubNodes: []*treeNode{}}
+		for _, d := range whitelist {
+			split := strings.Split(d, ".")
+
+			currentNode := tree
+			for i, s := range split {
+				currentNode = currentNode.FindOrCreateSubNode(s)
+
+				if i+1 == len(split) {
+					currentNode.Leaf = true
+					currentNode.FullValue = d
+					continue
+				}
+				if currentNode.SubNodes == nil {
+					currentNode.SubNodes = []*treeNode{}
+				}
+			}
+		}
+
+		useDomainMetricsWhitelist = true
+		domainMetricsWhitelist = tree
+	}
+
+	// Parse redirect templates
+	var err error
+	redirectHTMLTemplate, err = template.New("redirectHTML").Parse(redirectHTML)
+	if err != nil {
+		log.WithField("err", err).Fatal("failed to parse redirectHTML template")
+		return
+	}
+	redirectPreviewHTMLTemplate, err = template.New("redirectPreviewHTML").Parse(redirectPreviewHTML)
+	if err != nil {
+		log.WithField("err", err).Fatal("failed to parse redirectPreviewHTML template")
+		return
 	}
 }
 
@@ -145,18 +259,6 @@ func main() {
 		return
 	}
 
-	// Parse redirect templates
-	redirectHTMLTemplate, err = template.New("redirectHTML").Parse(redirectHTML)
-	if err != nil {
-		log.WithField("err", err).Fatal("failed to parse redirectHTML template")
-		return
-	}
-	redirectPreviewHTMLTemplate, err = template.New("redirectPreviewHTML").Parse(redirectPreviewHTML)
-	if err != nil {
-		log.WithField("err", err).Fatal("failed to parse redirectPreviewHTML template")
-		return
-	}
-
 	// Launch server
 	h := requestHandler
 	if viper.GetBool("http.compressResponse") {
@@ -165,13 +267,13 @@ func main() {
 	log.Info("Attempting to listen on " + viper.GetString("http.listenAddress"))
 	server := &fasthttp.Server{
 		Handler:                       h,
-		Name:                          "whats-this/cdn-origin/" + version,
+		Name:                          "whats-this/cdn-origin v" + version,
 		ReadBufferSize:                1024 * 6, // 6 KB
 		ReadTimeout:                   time.Minute * 30,
 		WriteTimeout:                  time.Minute * 30,
 		GetOnly:                       true,
 		LogAllErrors:                  log.GetLevel() == log.DebugLevel,
-		DisableHeaderNamesNormalizing: true,
+		DisableHeaderNamesNormalizing: false,
 		Logger: log.New(),
 	}
 	if err := server.ListenAndServe(viper.GetString("http.listenAddress")); err != nil {
@@ -186,14 +288,14 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	if log.GetLevel() == log.DebugLevel {
 		log.WithFields(log.Fields{
 			"connRequestNumber": ctx.ConnRequestNum(),
-			// "connTime":          ctx.ConnTime(),
+			// "connTime":		ctx.ConnTime(),
 			"method": string(ctx.Method()),
-			// "path":        path,
+			// "path":	  path,
 			"queryString": ctx.QueryArgs(),
 			"remoteIP":    ctx.RemoteIP(),
 			"requestURI":  string(ctx.RequestURI()),
-			// "time":              ctx.Time(),
-			// "userAgent":         string(ctx.UserAgent()),
+			// "time":		ctx.Time(),
+			// "userAgent":		string(ctx.UserAgent()),
 		}).Debug("request received")
 	}
 
@@ -224,9 +326,21 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 
 	// Update metrics if metrics are being served
 	if viper.GetBool("cdnUtil.serveMetrics") {
-		host := ctx.Request.Header.Peek(host)
-		if len(host) != 0 {
-			prometheus.HTTPRequestsTotal.With(prom.Labels{"host": string(host)}).Inc()
+		hostBytes := ctx.Request.Header.Peek(host)
+		if len(hostBytes) != 0 {
+			hostStr := string(hostBytes)
+			if useDomainMetricsWhitelist {
+				hostSplit := strings.Split(hostStr, periodStr)
+				if match := domainMetricsWhitelist.GetMatch(hostSplit); match != "" {
+					if strings.HasPrefix(match, asteriskPeriodStr) {
+						hostSplit[0] = asteriskStr
+					}
+					fmt.Println(match, hostSplit)
+					prometheus.HTTPRequestsTotal.With(prom.Labels{host: strings.Join(hostSplit, periodStr)}).Inc()
+				}
+			} else {
+				prometheus.HTTPRequestsTotal.With(prom.Labels{host: hostStr}).Inc()
+			}
 		}
 	}
 
