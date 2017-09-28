@@ -336,7 +336,6 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 						if strings.HasPrefix(match, asteriskPeriodStr) {
 							hostSplit[0] = asteriskStr
 						}
-						fmt.Println(match, hostSplit)
 						prometheus.HTTPRequestsTotal.With(prom.Labels{host: strings.Join(hostSplit, periodStr)}).Inc()
 					}
 				} else {
