@@ -21,6 +21,9 @@ import (
 // version is the current version of cdn-origin.
 const version = "0.2.0"
 
+// Default SeaweedFS fetch parameters.
+const defaultSeaweedFSQueryParameters = ""
+
 // HTTP header strings.
 const (
 	accept = "accept"
@@ -382,7 +385,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		}
 
 		// TODO: ?thumbnail query parameter for images
-		statusCode, err := seaweed.Get(ctx, backend_file_id.String, "")
+		statusCode, contentSize, err := seaweed.Get(ctx, backend_file_id.String, defaultSeaweedFSQueryParameters)
 		if err != nil {
 			log.WithField("err", err).Warn("failed to retrieve file from SeaweedFS volume server")
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
@@ -398,7 +401,9 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 			ctx.SetContentType("text/plain; charset=utf8")
 			fmt.Fprint(ctx, "500 Internal Server Error")
+			return
 		}
+		ctx.Response.Header.SetContentLength(contentSize)
 
 	case 1: // redirect
 		if !dest_url.Valid {

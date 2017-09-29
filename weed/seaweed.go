@@ -55,10 +55,10 @@ func New(masterURI string, lookupTimeout time.Duration) *Seaweed {
 	}
 }
 
-func (s *Seaweed) Get(writer io.Writer, fid string, query string) (int, error) {
+func (s *Seaweed) Get(writer io.Writer, fid string, query string) (int, int, error) {
 	volumeURL := s.lookupVolume(strings.Split(fid, ",")[0])
 	if volumeURL == "" {
-		return 500, errors.New("failed to retrieve volume URL")
+		return fasthttp.StatusInternalServerError, 0, errors.New("failed to retrieve volume URL")
 	}
 	requestURL := volumeURL
 	if !strings.HasPrefix(requestURL, "http://") && !strings.HasPrefix(requestURL, "https://") {
@@ -85,15 +85,15 @@ func (s *Seaweed) Get(writer io.Writer, fid string, query string) (int, error) {
 	// Perform request
 	err := fasthttp.Do(req, res)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if res.StatusCode() == fasthttp.StatusOK {
 		if err := res.BodyWriteTo(writer); err != nil {
 			log.WithField("err", err).Warn("failed to set body writer for response")
-			return fasthttp.StatusInternalServerError, err
+			return fasthttp.StatusInternalServerError, 0, err
 		}
 	}
-	return fasthttp.StatusOK, err
+	return fasthttp.StatusOK, res.Header.ContentLength(), err
 }
 
 func (s *Seaweed) Ping() error {
