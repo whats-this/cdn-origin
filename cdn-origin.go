@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"database/sql"
 	"fmt"
 	"html/template"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/whats-this/cdn-origin/prometheus"
 	"github.com/whats-this/cdn-origin/weed"
@@ -27,6 +25,7 @@ const version = "0.2.0"
 const (
 	accept = "accept"
 	host   = "host"
+	location = "Location"
 )
 
 // Host domain match strings.
@@ -409,41 +408,29 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			fmt.Fprint(ctx, "500 Internal Server Error")
 		}
 
-		if ctx.QueryArgs().Has("preview") {
-			buf := new(bytes.Buffer)
-			err := redirectPreviewHTMLTemplate.Execute(buf, dest_url.String)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"err":      err,
-					"dest_url": dest_url.String,
-				}).Warn("failed to generate redirect preview HTML to send to client")
-				ctx.SetContentType("text/plain; charset=utf8")
-				fmt.Fprintf(ctx, "Failed to generate preview page, destination URL: %s", dest_url.String)
-				return
-			}
-			b := buf.Bytes()
-			s := *(*string)(unsafe.Pointer(&b))
-			ctx.SetContentType("text/html; charset=utf8")
-			fmt.Fprint(ctx, s)
+		previewMode := ctx.QueryArgs().Has("preview")
+		var err error
+		if previewMode {
+			err = redirectPreviewHTMLTemplate.Execute(ctx, dest_url.String)
 		} else {
-			buf := new(bytes.Buffer)
-			err := redirectHTMLTemplate.Execute(buf, dest_url.String)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"err":      err,
-					"dest_url": dest_url.String,
-				}).Warn("failed to generate redirect HTML to send to client")
-				ctx.SetContentType("text/plain; charset=utf8")
-				fmt.Fprintf(ctx, "Failed to generate HTML fallback page, destination URL: %s", dest_url.String)
-				return
-			}
-			b := buf.Bytes()
-			s := *(*string)(unsafe.Pointer(&b))
-			ctx.SetStatusCode(fasthttp.StatusMovedPermanently)
-			ctx.SetContentType("text/html; charset=utf8")
-			ctx.Response.Header.Set("Location", dest_url.String)
-			fmt.Fprint(ctx, s)
+			err = redirectHTMLTemplate.Execute(ctx, dest_url.String)
+		}
 
+		if err != nil {
+			log.WithFields(log.Fields{
+				"err": err,
+				"dest_url": dest_url.String,
+				"preview": ctx.QueryArgs().Has("preview"),
+			}).Warn("failed to generate HTML redirect page to send to client")
+			ctx.SetContentType("text/plain; charset=utf8")
+			fmt.Fprintf(ctx, "Failed to generate HTML redirect page, destination URL: %s", dest_url.String)
+			return
+		}
+
+		ctx.SetContentType("text/html; charset=ut8")
+		if !previewMode {
+			ctx.SetStatusCode(fasthttp.StatusFound)
+			ctx.Response.Header.Set(location, dest_url.String)
 		}
 	}
 }
