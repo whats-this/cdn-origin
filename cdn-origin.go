@@ -19,7 +19,7 @@ import (
 )
 
 // version is the current version of cdn-origin.
-const version = "0.2.0"
+const version = "0.3.0"
 
 // Default SeaweedFS fetch parameters.
 const defaultSeaweedFSQueryParameters = ""
