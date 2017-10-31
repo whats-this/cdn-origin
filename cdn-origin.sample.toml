@@ -1,41 +1,53 @@
-[cdnUtil]
-    # Authentication token for accessing /.cdn-util (supplied with query
-    # parameter "authKey")
-    authKey = "secret"
-
-    # Serve Prometheus metrics (/.cdn-util/prometheus/metrics)
-    serveMetrics = true
-
-[http]
-    # Enable transparent response compression (only when the client Accepts it)
-    compressResponse = true
-
-    # TCP address to listen to for HTTP requests
-    listenAddress = ":8001"
-
-[metrics]
-    # Enable metrics collection domain whitelist. When this is enabled, metrics
-    # will only be collected for requests with a Host header matching a domain
-    # in the list below.
-    enableWhitelist = false
-
-    # Metrics collection domain whitelist. Wildcards are supported at the
-    # beginning of each domain.
-    domainWhitelist = [
-        "example.com",
-        "*.example.net",
-        "test.example.org"
-    ]
-
-[log]
-    # Enable debug mode (logs requests and prints other information)
-    debug = false
+# Enable debug mode (logs requests and prints other information)
+debug = false
 
 [database]
     # PostgreSQL connection URL, see
     # https://godoc.org/github.com/lib/pq#hdr-Connection_String_Parameters for
     # more information
     connectionURL = "postgres://postgres:password@localhost/whats_this?sslmode=disable"
+
+[http]
+    # Enable transparent response compression (only when the client Accepts it)
+    compressResponse = false
+
+    # TCP address to listen to for HTTP requests
+    listenAddress = ":8080"
+
+    # Trust X-Forwarded-For header from proxy (used in metrics collection)
+    trustProxy = false
+
+[metrics]
+    # Enable anonymized request recording (country code, hostname, object type,
+    # status code)
+    enable = false
+
+    # Elasticsearch URL to connect to for metrics, required if
+    # `metrics.enable == true`. See
+    # https://godoc.org/gopkg.in/olivere/elastic.v5/config#Parse for more
+    # information.
+    elasticURL = "http://elasticsearch:9200/cdn-origin_requests?shards=1&replicas=0"
+
+    # Enable metrics collection hostname whitelist. When this is enabled,
+    # metrics will only be collected for requests with a Host header matching a
+    # domain in the list below.
+    enableHostnameWhitelist = false
+
+    # Metrics collection hostname whitelist. Wildcards are supported at the
+    # beginning of each domain. It is recommended to rank this list by domain
+    # popularity at intervals to reduce match time.
+    #
+    # Since 0.4.0 `www.` prefixes will be stripped from all incoming `Host`
+    # headers, and don't need to be included in `metrics.hostnameWhitelist`.
+    hostnameWhitelist = [
+        "example.com",
+        "*.example.net",
+        "test.example.org"
+    ]
+
+    # MaxMind GeoLite2 Country database location on disk. If omitted, no country
+    # code data will be collected. https://dev.maxmind.com/geoip/geoip2/geolite2
+    maxmindDBLocation = "/var/data/maxmind/GeoLite2-Country.mmdb"
 
 [seaweed]
     # SeaweedFS master URL (used for looking up volumes, volumes must be

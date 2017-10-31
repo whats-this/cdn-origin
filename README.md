@@ -1,6 +1,6 @@
 # Whats-This CDN Origin
 
-Simple but quick Golang webserver that serves requests to get files and 
+Simple but quick Golang webserver that serves requests to get files and
 redirects from a [PostgreSQL](https://www.postgresql.org) and
 [SeaweedFS](https://github.com/chrislusf/seaweedfs) backend.
 
@@ -40,28 +40,20 @@ Information about configuration variables and their purpose can be found in
 
 ### Metrics
 
-If `cdnUtil.serveMetrics` is enabled,
-`/.cdn-util/prometheus/metrics?authKey={{cdnUtil.authKey}}` will return
-Prometheus-compatible information about requests (and Go runtime information).
+If `metrics.enable` is `true`, request metadata will be indexed in the provided
+Elaticsearch server in the following format:
 
-Here is a sample scrape configuration for accessing data from `cdn-origin`:
-
-```yml
-scrape_configs:
-  - job_name: 'cdn_origin'
-    scrape_interval: 5s
-    metrics_path: '/.cdn-util/prometheus/metrics'
-    params:
-        authKey: ['secret']
-    static_configs:
-      - targets: ['localhost:8080']
+```js
+{
+  "country_code": string,
+	"hostname":     string,
+	"object_type":  string,
+	"status_code":  int
+}
 ```
 
-Sample Grafana dashboards can be found in [dashboards.json](dashboards.json).
-
-Custom metrics:
-
-- HTTPRequestsTotal: `cdn_origin_http_requests_total{host="request Host header"}`
+The index and `timestamp` pipeline are created automatically if `cdn-origin` has
+permission.
 
 ### TODO
 
