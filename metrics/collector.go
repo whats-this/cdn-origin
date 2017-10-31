@@ -36,14 +36,14 @@ const timestampPipeline = `
   "processors": [
     {
       "set": {
-        "field": "timestamp",
+        "field": "@timestamp",
         "value": "{{_ingest.timestamp}}"
       }
     },
     {
       "date": {
-        "field": "timestamp",
-        "target_field": "timestamp",
+        "field": "@timestamp",
+        "target_field": "@timestamp",
         "formats": ["EEE MMM d HH:mm:ss z yyyy"]
       }
     }

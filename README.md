@@ -46,9 +46,10 @@ Elaticsearch server in the following format:
 ```js
 {
   "country_code": string,
-	"hostname":     string,
-	"object_type":  string,
-	"status_code":  int
+  "hostname":     string,
+  "object_type":  string,
+  "status_code":  int,
+  "@timestamp":   date // generated from `timestamp` pipeline
 }
 ```
 
