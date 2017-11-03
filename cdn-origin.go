@@ -236,8 +236,6 @@ func recordMetrics(ctx *fasthttp.RequestCtx, objectType string) {
 		remoteIP = ctx.RemoteIP()
 	}
 
-	remoteIP = net.ParseIP("51.15.83.140")
-
 	hostBytes := ctx.Request.Header.Peek(host)
 	if len(hostBytes) != 0 {
 		go func() {
