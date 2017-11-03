@@ -45,16 +45,17 @@ Elaticsearch server in the following format:
 
 ```js
 {
-  "country_code": string,
-  "hostname":     string,
-  "object_type":  string,
-  "status_code":  int,
-  "@timestamp":   date // generated from `timestamp` pipeline
+  "country_code": keyword,
+  "hostname":     keyword,
+  "object_type":  keyword,
+  "status_code":  short,
+  "@timestamp":   date // generated from `@timestamp` pipeline
 }
 ```
 
-The index and `timestamp` pipeline are created automatically if `cdn-origin` has
-permission.
+The index and `@timestamp` pipeline are created automatically if `cdn-origin`
+has permission. Alternatively, the mapping and pipeline can be created by other
+means using the `.json` files in [metrics/](metrics).
 
 ### TODO
 

@@ -13,6 +13,8 @@ import (
 	"gopkg.in/olivere/elastic.v5/config"
 )
 
+// mapping is the default mapping to use when creating the index if it doesn't exist. This JSON data is also maintained
+// in `./mapping.elasticsearch.json`.
 const mapping = `
 {
   "settings": {
@@ -20,16 +22,39 @@ const mapping = `
   },
 
   "mappings": {
-    "type": {
+    "request": {
       "properties": {
-        "timestamp": {
-          "type": "date"
+        "country_code": {
+          "type": "keyword",
+          "ignore_above": 2,
+          "index": true
+        },
+        "hostname": {
+          "type": "keyword",
+          "ignore_above": 30,
+          "index": true
+        },
+        "object_type": {
+          "type": "keyword",
+          "ignore_above": 30,
+          "index": true
+        },
+        "status_code": {
+          "type": "short",
+          "index": true
+        },
+
+        "@timestamp": {
+          "type": "date",
+          "index": true
         }
       }
     }
   }
 }`
 
+// The default `@timestamp` pipeline. Sets the `@timestamp` field to the ingest timestamp (date type). This JSON data is
+// also maintained in `./timestampPipeline.elasticsearch.json`.
 const timestampPipeline = `
 {
   "description": "Stores the ingest timestamp as a date field in the document.",
