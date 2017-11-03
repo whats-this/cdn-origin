@@ -1,0 +1,36 @@
+{
+  "settings": {
+    "number_of_shards": 1
+  },
+
+  "mappings": {
+    "request": {
+      "properties": {
+        "country_code": {
+          "type": "keyword",
+          "ignore_above": 2,
+          "index": true
+        },
+        "hostname": {
+          "type": "keyword",
+          "ignore_above": 30,
+          "index": true
+        },
+        "object_type": {
+          "type": "keyword",
+          "ignore_above": 30,
+          "index": true
+        },
+        "status_code": {
+          "type": "short",
+          "index": true
+        },
+
+        "@timestamp": {
+          "type": "date",
+          "index": true
+        }
+      }
+    }
+  }
+}

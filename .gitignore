@@ -19,5 +19,8 @@ cdn-origin
 # Package configuration file (not including sample configuration)
 cdn-origin.toml
 
+# MaxMind GeoLite2 Country database files
+GeoLite2-Country.mmdb
+
 # JetBrains .idea
 .idea/

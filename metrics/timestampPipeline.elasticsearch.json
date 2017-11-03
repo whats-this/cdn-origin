@@ -1,0 +1,18 @@
+{
+  "description": "Stores the ingest timestamp as a date field in the document.",
+  "processors": [
+    {
+      "set": {
+        "field": "@timestamp",
+        "value": "{{_ingest.timestamp}}"
+      }
+    },
+    {
+      "date": {
+        "field": "@timestamp",
+        "target_field": "@timestamp",
+        "formats": ["EEE MMM d HH:mm:ss z yyyy"]
+      }
+    }
+  ]
+}
