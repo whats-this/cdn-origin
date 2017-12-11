@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -237,6 +238,7 @@ func recordMetrics(ctx *fasthttp.RequestCtx, objectType string) {
 	}
 
 	hostBytes := ctx.Request.Header.Peek(host)
+	statusCode := ctx.Response.StatusCode()
 	if len(hostBytes) != 0 {
 		go func() {
 			// Check hostname
@@ -256,7 +258,7 @@ func recordMetrics(ctx *fasthttp.RequestCtx, objectType string) {
 			record.CountryCode = countryCode
 			record.Hostname = hostStr
 			record.ObjectType = objectType
-			record.StatusCode = ctx.Response.StatusCode()
+			record.StatusCode = statusCode
 			err = collector.Put(record)
 			if err != nil {
 				log.WithError(err).Warn("failed to collect record")
@@ -320,8 +322,17 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			return
 		}
 
+		// Construct headers and get object
+		headers := map[string][]byte{}
+		if acceptEncoding := ctx.Request.Header.Peek("Accept-Encoding"); len(acceptEncoding) > 0 {
+			headers["Accept-Encoding"] = acceptEncoding
+		}
+		if reqRange := ctx.Request.Header.Peek("Range"); len(reqRange) > 0 {
+			headers["Range"] = reqRange
+		}
+		fmt.Println(headers)
 		// TODO: ?thumbnail query parameter for images
-		statusCode, contentSize, err := seaweed.Get(ctx, backendFileID.String, defaultSeaweedFSQueryParameters)
+		statusCode, resHeaders, err := seaweed.Get(ctx, backendFileID.String, headers, defaultSeaweedFSQueryParameters)
 		if err != nil {
 			log.WithError(err).Warn("failed to retrieve file from SeaweedFS volume server")
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
@@ -330,9 +341,9 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			recordMetrics(ctx, metricsObjectType)
 			return
 		}
-		if statusCode != fasthttp.StatusOK {
+		if statusCode != fasthttp.StatusOK && statusCode != fasthttp.StatusPartialContent {
 			log.WithFields(log.Fields{
-				"expected": fasthttp.StatusOK,
+				"expected": fmt.Sprintf("%v,%v", fasthttp.StatusOK, fasthttp.StatusPartialContent),
 				"got":      statusCode,
 			}).Warn("unexpected status code while retrieving file from SeaweedFS volume server")
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
@@ -342,12 +353,25 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			return
 		}
 
+		// Set response headers
+		ctx.SetStatusCode(statusCode)
+		ctx.Response.Header.Set("Accept-Ranges", "bytes")
 		if contentType.Valid {
 			ctx.SetContentType(contentType.String)
 		} else {
 			ctx.SetContentType("application/octet-stream")
 		}
-		ctx.Response.Header.SetContentLength(contentSize)
+		if contentLength, ok := resHeaders["Content-Length"]; ok {
+			if val, err := strconv.Atoi(string(contentLength)); err != nil && val >= 0 {
+				ctx.Response.Header.SetContentLength(val)
+			}
+		}
+		if contentEncoding, ok := resHeaders["Content-Encoding"]; ok {
+			ctx.Response.Header.SetBytesV("Content-Encoding", contentEncoding)
+		}
+		if contentRange, ok := resHeaders["Content-Range"]; ok {
+			ctx.Response.Header.SetBytesV("Content-Range", contentRange)
+		}
 		recordMetrics(ctx, metricsObjectType)
 
 	case 1: // redirect
