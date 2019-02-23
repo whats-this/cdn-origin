@@ -1,11 +1,15 @@
-# Enable debug mode (logs requests and prints other information)
-debug = false
+[log]
+    # Log level (5=panic, 4=fatal, 3=error, 2=warn, 1=info, 0=debug)
+    level = 1
 
 [database]
     # PostgreSQL connection URL, see
     # https://godoc.org/github.com/lib/pq#hdr-Connection_String_Parameters for
     # more information
     connectionURL = "postgres://postgres:password@localhost/whats_this?sslmode=disable"
+
+    # Bucket to serve objects from
+    objectBucket = "public"
 
 [http]
     # Enable transparent response compression (only when the client Accepts it)
@@ -49,7 +53,6 @@ debug = false
     # code data will be collected. https://dev.maxmind.com/geoip/geoip2/geolite2
     maxmindDBLocation = "/var/data/maxmind/GeoLite2-Country.mmdb"
 
-[seaweed]
-    # SeaweedFS master URL (used for looking up volumes, volumes must be
-    # accessible by their publicUrl)
-    masterURL = "http://localhost:9333"
+[files]
+    # Storage location of the bucket on disk
+    storageLocation = "/var/data/buckets/public"

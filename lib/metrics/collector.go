@@ -7,8 +7,8 @@ import (
 	"net"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/oschwald/maxminddb-golang"
+	"github.com/rs/zerolog/log"
 	"gopkg.in/olivere/elastic.v5"
 	"gopkg.in/olivere/elastic.v5/config"
 )
@@ -95,7 +95,7 @@ func New(elasticURL string, maxmindLoc string, enableHostnameWhitelist bool, hos
 		return nil, fmt.Errorf("failed to parse elasticURL: %s", err)
 	}
 	if cfg.Index == "" {
-		log.Info(`empty index name in elasticURL, using "cdn-origin_requests"`)
+		log.Info().Msg(`empty index name in elasticURL, using "cdn-origin_requests"`)
 		cfg.Index = "cdn-origin_requests"
 	}
 
@@ -109,11 +109,7 @@ func New(elasticURL string, maxmindLoc string, enableHostnameWhitelist bool, hos
 	if err != nil {
 		return nil, fmt.Errorf("failed to ping Elasticsearch server: %s", err)
 	}
-	// TODO: if code != 200
-	log.WithFields(log.Fields{
-		"statusCode": code,
-		"version":    info.Version.Number,
-	}).Debug("elasticsearch ping success")
+	log.Debug().Int("statusCode", code).Str("version", info.Version.Number).Msg("elasticsearch ping success")
 
 	// Check if the index exists or create it
 	exists, err := client.IndexExists(cfg.Index).Do(ctx)
@@ -121,7 +117,7 @@ func New(elasticURL string, maxmindLoc string, enableHostnameWhitelist bool, hos
 		return nil, fmt.Errorf("failed to determine if the index exists: %s", err)
 	}
 	if !exists {
-		log.WithField("index", cfg.Index).Info("creating Elasticsearch index")
+		log.Info().Str("index", cfg.Index).Msg("creating Elasticsearch index")
 		createIndex, err := client.CreateIndex(cfg.Index).
 			BodyString(mapping).
 			Do(ctx)
@@ -141,7 +137,7 @@ func New(elasticURL string, maxmindLoc string, enableHostnameWhitelist bool, hos
 		return nil, fmt.Errorf("failed to determine if the timestamp pipeline exists: %s", err)
 	}
 	if len(pipelines) == 0 {
-		log.WithField("pipeline", "timestamp").Info("creating Elasticsearch ingest pipeline")
+		log.Info().Str("pipeline", "timestamp").Msg("creating Elasticsearch ingest pipeline")
 		putPipeline, err := elastic.NewIngestPutPipelineService(client).
 			Id("timestamp").
 			BodyString(timestampPipeline).
