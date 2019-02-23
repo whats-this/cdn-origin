@@ -1,42 +1,23 @@
-# Whats-This CDN Origin
+# cdn-origin
 
 Simple but quick Golang webserver that serves requests to get files and
-redirects from a [PostgreSQL](https://www.postgresql.org) and
-[SeaweedFS](https://github.com/chrislusf/seaweedfs) backend.
+redirects from [PostgreSQL](https://www.postgresql.org).
 
 ### Requirements
 
 - PostgreSQL server with `objects` table
-- SeaweedFS cluster with files in the `objects` table
+- Access to the folder where the files are stored
 
 ### Usage
 
 ```
-$ go get -u github.com/whats-this/cdn-origin
-
-# With configuration file
-$ cp $GOPATH/src/github.com/whats-this/cdn-origin/cdn-origin.sample.toml /etc/cdn-origin/cdn-origin.toml
-$ vim /etc/cdn-origin/cdn-origin.toml
-$ cdn-origin
-
-# With environment variables
-$ set DATABASE_CONNECTION_URL="postgres://postgres@localhost/data?sslmode=disable"
-$ set SEAWEED_MASTER_URL="http://localhost:9333"
-$ ...
-$ cdn-origin
-
-# With flags
-$ cdn-origin \
-    --database-connection-url="postgres://postgres@localhost/data?sslmode=disable" \
-    --seaweed-master-url="http://localhost:9333" \
-    ...
-
-# Flags take precedence over environment variables, which take precedence over config files
+$ git clone https://owo.codes/whats-this/cdn-origin.git
+$ cd cdn-origin
+$ cp config.sample.toml config.toml
+$ vim config.toml
+$ go build main.go
+$ ./main --config-file ./config.toml
 ```
-
-Information about configuration variables and their purpose can be found in
-[cdn-origin.sample.toml](cdn-origin.sample.toml). Configuration is handled by
-[Viper](https://github.com/spf13/viper).
 
 ### Metrics
 
@@ -55,17 +36,15 @@ Elaticsearch server in the following format:
 
 The index and `@timestamp` pipeline are created automatically if `cdn-origin`
 has permission. Alternatively, the mapping and pipeline can be created by other
-means using the `.json` files in [metrics/](metrics).
+means using the `.json` files in [lib/metrics/](lib/metrics).
 
 ### TODO
 
-- [ ] Process chunked files stored in SeaweedFS, similar to [how SeaweedFS cli
-  handles it](https://github.com/chrislusf/seaweedfs/wiki/Large-File-Handling)
-- [ ] Add TTL to volume cache
 - [ ] Write tests
-- [ ] Add thumbnail functionality (SeaweedFS supports this)
+- [ ] Add thumbnail functionality
 
 ### License
 
 `cdn-origin` is licensed under the MIT license. A copy of the MIT license can be
 found in [LICENSE](LICENSE).
+
