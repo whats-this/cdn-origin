@@ -325,5 +325,18 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			ctx.SetStatusCode(fasthttp.StatusOK)
 		}
 		recordMetrics(ctx)
+
+	case 2: // tombstone
+		ctx.SetUserValue("object_type", "tombstone")
+
+		// Send 410 gone response
+		ctx.SetStatusCode(fasthttp.StatusGone)
+		ctx.SetContentType("text/plain; charset=utf8")
+		reason := "no reason specified"
+		if object.DeleteReason != nil && *object.DeleteReason != "" {
+			reason = *object.DeleteReason
+		}
+		fmt.Fprintf(ctx, "410 Gone: %s\n\nReason: %s", ctx.Path(), reason)
+		recordMetrics(ctx)
 	}
 }

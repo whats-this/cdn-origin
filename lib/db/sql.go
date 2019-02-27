@@ -4,7 +4,9 @@ var selectObjectByBucketKey = `
 SELECT
 	content_type,
 	dest_url,
-	"type"
+	"type",
+	deleted_at,
+	delete_reason
 FROM
 	objects
 WHERE

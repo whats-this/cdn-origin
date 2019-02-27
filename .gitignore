@@ -19,6 +19,7 @@ main
 
 # Package configuration file (not including sample configuration)
 config.toml
+config.prod.toml
 
 # MaxMind GeoLite2 Country database files
 GeoLite2-Country.mmdb
