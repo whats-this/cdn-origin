@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS objects (
   content_length INT DEFAULT NULL, -- Content-Length of file
   associated_user VARCHAR(36) DEFAULT NULL, -- ID of user who uploaded file
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, -- File creation timestamp
+  deleted_at TIMESTAMP DEFAULT NULL, -- Deletion timestamp
+  delete_reason VARCHAR(256) DEFAULT NULL, -- Deletion reason
   md5_hash VARCHAR(32) DEFAULT NULL -- MD5 hash of file contents (or destination URL)
 );
 
