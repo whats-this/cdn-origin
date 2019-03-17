@@ -16,8 +16,9 @@ func SelectObjectByBucketKey(bucket, key string) (Object, error) {
 	var objectType int
 	var deletedAt pq.NullTime
 	var deleteReason sql.NullString
+	var md5Hash sql.NullString
 	err := DB.QueryRow(selectObjectByBucketKey, fmt.Sprintf("%s/%s", bucket, key)).
-		Scan(&contentType, &destURL, &objectType, &deletedAt, &deleteReason)
+		Scan(&contentType, &destURL, &objectType, &deletedAt, &deleteReason, &md5Hash)
 	if err != nil {
 		return object, err
 	}
@@ -27,13 +28,16 @@ func SelectObjectByBucketKey(bucket, key string) (Object, error) {
 		object.ContentType = &contentType.String
 	}
 	if destURL.Valid {
-		object.DestURL= &destURL.String
+		object.DestURL = &destURL.String
 	}
 	if deletedAt.Valid {
 		object.DeletedAt = &deletedAt.Time
 		if deleteReason.Valid {
 			object.DeleteReason = &deleteReason.String
 		}
+	}
+	if md5Hash.Valid {
+		object.MD5Hash = &md5Hash.String
 	}
 	object.ObjectType = objectType
 	return object, nil

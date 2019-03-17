@@ -3,6 +3,12 @@
 Simple but quick Golang webserver that serves requests to get files and
 redirects from [PostgreSQL](https://www.postgresql.org).
 
+### Features
+- Serves files, short URLs and "tombstones" (deleted file markers)
+- Allows for URL previewing on short URLs (add `?preview`)
+- Allows for thumbnail generation on images (if enabled, add `?thumbnail`)
+- Can be configured to store generalized metrics
+
 ### Requirements
 
 - PostgreSQL server with `objects` table
@@ -40,11 +46,10 @@ means using the `.json` files in [lib/metrics/](lib/metrics).
 
 ### TODO
 
-- [ ] Write tests
-- [ ] Add thumbnail functionality
+- `OPTIONS`/`HEAD` support
+- Write tests
 
 ### License
 
 `cdn-origin` is licensed under the MIT license. A copy of the MIT license can be
 found in [LICENSE](LICENSE).
-

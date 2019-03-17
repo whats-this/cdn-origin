@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"html/template"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,22 +15,32 @@ import (
 
 	"owo.codes/whats-this/cdn-origin/lib/db"
 	"owo.codes/whats-this/cdn-origin/lib/metrics"
+	"owo.codes/whats-this/cdn-origin/lib/thumbnailer"
 
+	_ "github.com/lib/pq"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	_ "github.com/lib/pq"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/valyala/fasthttp"
 )
 
-// version is the current version of cdn-origin.
 // Build config
 const (
 	configLocationUnix = "/etc/whats-this/cdn-origin/config.toml"
-	shutdownTimeout = 10 *time.Second
-	version = "0.5.0"
+	version            = "0.7.0"
 )
+
+// readCloserBuffer is a *bytes.Buffer that implements io.ReadCloser.
+type readCloserBuffer struct {
+	*bytes.Buffer
+}
+
+func (b *readCloserBuffer) Close() error {
+	return nil
+}
+
+var _ io.ReadCloser = &readCloserBuffer{}
 
 // redirectHTML is the html/template template for generating redirect HTML.
 const redirectHTML = `<html><head><meta charset="UTF-8" /><meta http-equiv=refresh content="0; url={{.}}" /><script type="text/javascript">window.location.href="{{.}}"</script><title>Redirect</title></head><body><p>If you are not redirected automatically, click <a href="{{.}}">here</a> to go to the destination.</p></body></html>`
@@ -131,6 +143,9 @@ func init() {
 	if viper.GetString("files.storageLocation") == "" {
 		log.Fatal().Msg("Configuration: files.storageLocation is required")
 	}
+	if viper.GetBool("thumbnails.enable") && viper.GetBool("thumbnails.cacheEnable") && viper.GetString("thumbnails.cacheLocation") == "" {
+		log.Fatal().Msg("thumbnails.cacheLocation is required when thumbnails and thumbnails cache is enabled")
+	}
 
 	// Parse redirect templates
 	redirectHTMLTemplate, err = template.New("redirectHTML").Parse(redirectHTML)
@@ -144,6 +159,7 @@ func init() {
 }
 
 var collector *metrics.Collector
+var thumbnailCache *thumbnailer.ThumbnailCache
 
 func main() {
 	// Connect to PostgreSQL database
@@ -175,6 +191,11 @@ func main() {
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to setup metrics collector")
 		}
+	}
+
+	// Setup thumbnail cache
+	if viper.GetBool("thumbnails.enable") && viper.GetBool("thumbnails.cacheEnable") {
+		thumbnailCache = thumbnailer.NewThumbnailCache(viper.GetString("thumbnails.cacheLocation"))
 	}
 
 	// Launch server
@@ -252,6 +273,8 @@ func recordMetrics(ctx *fasthttp.RequestCtx) {
 }
 
 func requestHandler(ctx *fasthttp.RequestCtx) {
+	defer recordMetrics(ctx)
+
 	// Fetch object from database
 	key := string(ctx.Path()[1:])
 	object, err := db.SelectObjectByBucketKey(viper.GetString("database.objectBucket"), key)
@@ -260,20 +283,108 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
 		ctx.SetContentType("text/plain; charset=utf8")
 		fmt.Fprintf(ctx, "404 Not Found: %s", ctx.Path())
-		recordMetrics(ctx)
 		return
 	case err != nil:
 		log.Error().Err(err).Msg("failed to run SELECT query on database")
-		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
-		ctx.SetContentType("text/plain; charset=utf8")
-		fmt.Fprint(ctx, "500 Internal Server Error")
-		recordMetrics(ctx)
+		internalServerError(ctx)
 		return
 	}
 
 	switch object.ObjectType {
 	case 0: // file
 		ctx.SetUserValue("object_type", "file")
+
+		// Thumbnails
+		if viper.GetBool("thumbnails.enable") && ctx.QueryArgs().Has("thumbnail") {
+			thumbnailKey := *object.MD5Hash
+			if !thumbnailer.AcceptedMIMEType(*object.ContentType) || thumbnailKey == "" {
+				ctx.SetStatusCode(fasthttp.StatusNotFound)
+				ctx.SetContentType("text/plain; charset=utf8")
+				fmt.Fprintf(ctx, "404 Not Found: %s?thumbnail (cannot generate thumbnail)", ctx.Path())
+				return
+			}
+
+			// Get thumbnail
+			var thumb io.ReadCloser
+			if viper.GetBool("thumbnails.cacheEnable") {
+				thumb, err = thumbnailCache.GetThumbnail(thumbnailKey)
+				if thumb != nil {
+					defer thumb.Close()
+				}
+				if err == thumbnailer.NoCachedCopy {
+					fPath := filepath.Join(viper.GetString("files.storageLocation"), key)
+					file, err := os.Open(fPath)
+					if file != nil {
+						defer file.Close()
+					}
+					if err != nil {
+						log.Warn().Err(err).Msg("failed to open original file to generate thumbnail")
+						internalServerError(ctx)
+						return
+					}
+					err = thumbnailCache.Transform(thumbnailKey, file)
+					if err == thumbnailer.InputTooLarge {
+						ctx.SetStatusCode(fasthttp.StatusNotFound)
+						ctx.SetContentType("text/plain; charset=utf8")
+						fmt.Fprintf(ctx, "404 Not Found: %s?thumbnail (cannot generate thumbnail)", ctx.Path())
+						return
+					} else if err != nil {
+						log.Warn().Err(err).Msg("failed to generate new thumbnail")
+						internalServerError(ctx)
+						return
+					}
+					thumb, err = thumbnailCache.GetThumbnail(thumbnailKey)
+					if thumb != nil {
+						defer thumb.Close()
+					}
+					if err != nil {
+						log.Warn().Err(err).Msg("failed to get thumbnail from cache")
+						internalServerError(ctx)
+						return
+					}
+				} else if err != nil {
+					log.Warn().Err(err).Msg("failed to get thumbnail from cache")
+					internalServerError(ctx)
+					return
+				}
+			} else {
+				fPath := filepath.Join(viper.GetString("files.storageLocation"), key)
+				file, err := os.Open(fPath)
+				if file != nil {
+					defer file.Close()
+				}
+				if err != nil {
+					log.Warn().Err(err).Msg("failed to open original file to generate thumbnail")
+					internalServerError(ctx)
+					return
+				}
+				thumbR, err := thumbnailer.Transform(file)
+				if err == thumbnailer.InputTooLarge {
+					ctx.SetStatusCode(fasthttp.StatusNotFound)
+					ctx.SetContentType("text/plain; charset=utf8")
+					fmt.Fprintf(ctx, "404 Not Found: %s?thumbnail (cannot generate thumbnail)", ctx.Path())
+					return
+				} else if err != nil {
+					log.Warn().Err(err).Msg("failed to generate new thumbnail")
+					internalServerError(ctx)
+					return
+				}
+				// Turn the *bytes.Buffer from thumbnailer.Transform into a fake io.ReadCloser.
+				thumb = &readCloserBuffer{thumbR}
+			}
+
+			// Send response
+			ctx.SetStatusCode(fasthttp.StatusOK)
+			ctx.SetContentType("image/jpeg")
+			ctx.Response.Header.Set("Content-Disposition", fmt.Sprintf(`filename="%s.thumbnail.jpeg"`, key))
+			_, err = io.Copy(ctx, thumb)
+			if err != nil {
+				log.Warn().Err(err).Msg("failed to send thumbnail response")
+				ctx.Response.Header.Del("Content-Disposition")
+				internalServerError(ctx)
+			}
+			return
+		}
 
 		// Serve file to client
 		fPath := filepath.Join(viper.GetString("files.storageLocation"), key)
@@ -284,17 +395,13 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			ctx.SetContentType("application/octet-stream")
 		}
 		fasthttp.ServeFileUncompressed(ctx, fPath)
-		recordMetrics(ctx)
 
 	case 1: // redirect
 		ctx.SetUserValue("object_type", "redirect")
 
 		if object.DestURL == nil {
 			log.Warn().Str("key", key).Msg("encountered redirect object with NULL dest_url")
-			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
-			ctx.SetContentType("text/plain; charset=utf8")
-			fmt.Fprint(ctx, "500 Internal Server Error")
-			recordMetrics(ctx)
+			internalServerError(ctx)
 			return
 		}
 
@@ -309,11 +416,10 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		if err != nil {
 			log.Warn().Err(err).
 				Str("dest_url", *object.DestURL).
-				Bool("preview", ctx.QueryArgs().
-				Has("preview")).Msg("failed to generate HTML redirect page to send to client")
+				Bool("preview", ctx.QueryArgs().Has("preview")).
+				Msg("failed to generate HTML redirect page to send to client")
 			ctx.SetContentType("text/plain; charset=utf8")
 			fmt.Fprintf(ctx, "Failed to generate HTML redirect page, destination URL: %s", *object.DestURL)
-			recordMetrics(ctx)
 			return
 		}
 
@@ -324,7 +430,6 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		} else {
 			ctx.SetStatusCode(fasthttp.StatusOK)
 		}
-		recordMetrics(ctx)
 
 	case 2: // tombstone
 		ctx.SetUserValue("object_type", "tombstone")
@@ -337,6 +442,12 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			reason = *object.DeleteReason
 		}
 		fmt.Fprintf(ctx, "410 Gone: %s\n\nReason: %s", ctx.Path(), reason)
-		recordMetrics(ctx)
 	}
+}
+
+// internalServerError returns a 500 Internal Server Response.
+func internalServerError(ctx *fasthttp.RequestCtx) {
+	ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+	ctx.SetContentType("text/plain; charset=utf8")
+	fmt.Fprint(ctx, "500 Internal Server Error")
 }

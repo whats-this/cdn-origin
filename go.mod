@@ -1,8 +1,10 @@
 module owo.codes/whats-this/cdn-origin
 
 require (
+	github.com/discordapp/lilliput v0.0.0-20190215194814-3d66dff0ee01
 	github.com/lib/pq v1.0.0
 	github.com/oschwald/maxminddb-golang v1.3.0
+	github.com/pkg/errors v0.8.0
 	github.com/rs/zerolog v1.11.0
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.3.1

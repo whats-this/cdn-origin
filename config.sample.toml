@@ -56,3 +56,13 @@
 [files]
     # Storage location of the bucket on disk
     storageLocation = "/var/data/buckets/public"
+
+[thumbnails]
+    # Enable thumbnails? (add ?thumbnail to the end of a file object URL)
+    enable = true
+
+    # Enable thumbnail cache?
+    cacheEnable = true
+
+    # Thumbnail cache location (if enabled).
+    cacheLocation = "/tmp/thumbs"

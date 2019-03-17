@@ -11,4 +11,5 @@ type Object struct {
 	ObjectType   int        `json:"object_type"`
 	DeletedAt    *time.Time `json:"deleted_at"`
 	DeleteReason *string    `json:"delete_reason"`
+	MD5Hash      *string    `json:"md5_hash"`
 }

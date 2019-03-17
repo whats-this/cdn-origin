@@ -6,7 +6,8 @@ SELECT
 	dest_url,
 	"type",
 	deleted_at,
-	delete_reason
+	delete_reason,
+	md5_hash
 FROM
 	objects
 WHERE
