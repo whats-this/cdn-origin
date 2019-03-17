@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"strings"
 	"sync"
 
-	"github.com/discordapp/lilliput"
+	"owo.codes/dean/lilliput"
 	"github.com/pkg/errors"
 )
 
@@ -32,7 +33,8 @@ var thumbnailMIMETypes = map[string]struct{}{
 
 // AcceptedMIMEType checks if a MIME type is suitable for thumbnailing.
 func AcceptedMIMEType(mime string) bool {
-	_, ok := thumbnailMIMETypes[mime]
+	mimes := strings.SplitN(mime, ";", 2)
+	_, ok := thumbnailMIMETypes[mimes[0]]
 	return ok
 }
 
