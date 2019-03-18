@@ -11,12 +11,14 @@ import (
 // ID from a database or the original file's hash.
 type ThumbnailCache struct {
 	Directory string
+	ThumbnailerURL string
 }
 
 // NewThumbnailCache creates a new *ThumbnailCache.
-func NewThumbnailCache(directory string) *ThumbnailCache {
+func NewThumbnailCache(directory, thumbnailerURL string) *ThumbnailCache {
 	return &ThumbnailCache{
 		Directory: directory,
+		ThumbnailerURL: thumbnailerURL,
 	}
 }
 
@@ -44,8 +46,8 @@ func (c *ThumbnailCache) SetThumbnail(key string, data io.Reader) error {
 }
 
 // Transform generates a thumbnail and caches it.
-func (c *ThumbnailCache) Transform(key string, data io.Reader) error {
-	outputImage, err := Transform(data)
+func (c *ThumbnailCache) Transform(key string, contentType string, data io.Reader) error {
+	outputImage, err := Transform(c.ThumbnailerURL, contentType, data)
 	if err != nil {
 		return err
 	}

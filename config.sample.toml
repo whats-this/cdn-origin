@@ -61,6 +61,11 @@
     # Enable thumbnails? (add ?thumbnail to the end of a file object URL)
     enable = true
 
+    # Thumbnailer URL. This is a endpoint that accepts a POST request containing
+    # raw image data and returns a thumbnail. For example, see
+    # https://owo.codes/whats-this/thumbnail-service.
+    thumbnailerURL = "http://localhost:8081/thumbnail"
+
     # Enable thumbnail cache?
     cacheEnable = true
 

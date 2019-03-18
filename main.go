@@ -143,6 +143,9 @@ func init() {
 	if viper.GetString("files.storageLocation") == "" {
 		log.Fatal().Msg("Configuration: files.storageLocation is required")
 	}
+	if viper.GetBool("thumbnails.enable") && viper.GetString("thumbnails.thumbnailerURL") == "" {
+		log.Fatal().Msg("thumbnails.thumbnailerURL is required when thumbnails are enabled")
+	}
 	if viper.GetBool("thumbnails.enable") && viper.GetBool("thumbnails.cacheEnable") && viper.GetString("thumbnails.cacheLocation") == "" {
 		log.Fatal().Msg("thumbnails.cacheLocation is required when thumbnails and thumbnails cache is enabled")
 	}
@@ -195,7 +198,8 @@ func main() {
 
 	// Setup thumbnail cache
 	if viper.GetBool("thumbnails.enable") && viper.GetBool("thumbnails.cacheEnable") {
-		thumbnailCache = thumbnailer.NewThumbnailCache(viper.GetString("thumbnails.cacheLocation"))
+		thumbnailCache = thumbnailer.NewThumbnailCache(viper.GetString("thumbnails.cacheLocation"),
+			viper.GetString("thumbnails.thumbnailerURL"))
 	}
 
 	// Launch server
@@ -297,7 +301,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		// Thumbnails
 		if viper.GetBool("thumbnails.enable") && ctx.QueryArgs().Has("thumbnail") {
 			thumbnailKey := *object.MD5Hash
-			if !thumbnailer.AcceptedMIMEType(*object.ContentType) || thumbnailKey == "" {
+			if !thumbnailer.AcceptedMIMEType(*object.ContentType) {
 				ctx.SetStatusCode(fasthttp.StatusNotFound)
 				ctx.SetContentType("text/plain; charset=utf8")
 				fmt.Fprintf(ctx, "404 Not Found: %s?thumbnail (cannot generate thumbnail)", ctx.Path())
@@ -322,7 +326,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 						internalServerError(ctx)
 						return
 					}
-					err = thumbnailCache.Transform(thumbnailKey, file)
+					err = thumbnailCache.Transform(thumbnailKey, *object.ContentType, file)
 					if err == thumbnailer.InputTooLarge {
 						ctx.SetStatusCode(fasthttp.StatusNotFound)
 						ctx.SetContentType("text/plain; charset=utf8")
@@ -358,7 +362,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 					internalServerError(ctx)
 					return
 				}
-				thumbR, err := thumbnailer.Transform(file)
+				thumbR, err := thumbnailer.Transform(viper.GetString("thumbnails.thumbnailerURL"), *object.ContentType, file)
 				if err == thumbnailer.InputTooLarge {
 					ctx.SetStatusCode(fasthttp.StatusNotFound)
 					ctx.SetContentType("text/plain; charset=utf8")

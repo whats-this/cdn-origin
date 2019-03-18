@@ -67,5 +67,3 @@ gopkg.in/olivere/elastic.v5 v5.0.79 h1:q+FQfSQxl+xIHoEwq8RGBsb5pRB9f8rfaLh4D9jx1
 gopkg.in/olivere/elastic.v5 v5.0.79/go.mod h1:uhHoB4o3bvX5sorxBU29rPcmBQdV2Qfg0FBrx5D6pV0=
 gopkg.in/yaml.v2 v2.2.2 h1:ZCJp+EgiOT7lHqUV2J862kp8Qj64Jo6az82+3Td9dZw=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
-owo.codes/dean/lilliput v2.0.0+incompatible h1:bKrduuQE3IdC4e53bLpMHZi9ID9+deuA0sjTIuC/4lE=
-owo.codes/dean/lilliput v2.0.0+incompatible/go.mod h1:AgQZ+WRDHDa1epCIXDph4hPks/wBrFRuXUy4awwuP4M=

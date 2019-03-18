@@ -3,24 +3,10 @@ package thumbnailer
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"strings"
-	"sync"
 
-	"owo.codes/dean/lilliput"
 	"github.com/pkg/errors"
-)
-
-// Transform settings. These should remain constant. If these are ever changed,
-// the thumbnail cache should be cleared.
-var (
-	maxInputResolution  = 10000           // maximum length in pixels of any input length
-	maxOutputResolution = 200             // maximum length in pixels of any output length
-	outputBufferSize    = 5 * 1024 * 1024 // bytes
-	outputType          = ".jpeg"         // with leading dot
-	encodeOptions       = map[int]int{
-		lilliput.JpegQuality: 85,
-	}
+	"github.com/valyala/fasthttp"
 )
 
 // Accepted MIME types for thumbnails in map for easy checking
@@ -38,82 +24,35 @@ func AcceptedMIMEType(mime string) bool {
 	return ok
 }
 
-// Pool operations for reusing *lillput.ImageOps objects.
-var imageOpsPool = &sync.Pool{
-	New: func() interface{} {
-		return lilliput.NewImageOps(maxInputResolution)
-	},
-}
+// Transform takes an image io.Reader and sends it to the thumbnailer service
+// to be transcoded into a thumbnail.
+func Transform(thumbnailerURL, contentType string, data io.Reader) (*bytes.Buffer, error) {
+	// Set request and response
+	req := fasthttp.AcquireRequest()
+	res := fasthttp.AcquireResponse()
+	defer func() {
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(res)
+	}()
 
-func getImageOps() *lilliput.ImageOps {
-	return imageOpsPool.Get().(*lilliput.ImageOps)
-}
-func returnImageOps(imageOps *lilliput.ImageOps) {
-	imageOpsPool.Put(imageOps)
-}
-
-// Transform takes image data and resizes it to fit the maxOutputResolution above.
-func Transform(data io.Reader) (*bytes.Buffer, error) {
-	b, err := ioutil.ReadAll(data)
+	req.Reset()
+	req.Header.SetMethod("POST")
+	req.SetRequestURI(thumbnailerURL)
+	req.Header.Set("Content-Type", contentType)
+	_, err := io.Copy(req.BodyWriter(), data)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read in image data")
+		return nil, errors.Wrap(err, "failed to copy data to request")
 	}
+	res.Reset()
 
-	// Create decoder and parse header
-	decoder, err := lilliput.NewDecoder(b)
+	// Do request
+	err = fasthttp.Do(req, res)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode image data")
+		return nil, errors.Wrap(err, "failed to make request to thumbnailer service")
 	}
-	header, err := decoder.Header()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse image header")
-	}
-
-	// Check if the image is within the input limit
-	if header.Width() > maxInputResolution || header.Height() > maxInputResolution {
-		return nil, InputTooLarge
+	if res.StatusCode() != fasthttp.StatusOK {
+		return nil, errors.Errorf("thumbnailer service failed to create thumbnail: %s", string(res.Body()))
 	}
 
-	// Determine output resolution
-	width := -1
-	height := -1
-	if header.Width() == header.Height() {
-		width = maxOutputResolution
-		height = maxOutputResolution
-	} else if header.Width() > header.Height() {
-		width = 200
-		scale := header.Width() / maxOutputResolution
-		height = header.Height() / scale
-	} else {
-		height = 200
-		scale := header.Height() / maxOutputResolution
-		width = header.Width() / scale
-	}
-
-	// Prepare to resize image
-	ops := getImageOps()
-	outputImage := make([]byte, outputBufferSize)
-
-	// Resizing options
-	opts := &lilliput.ImageOptions{
-		FileType:             outputType,
-		Width:                width,
-		Height:               height,
-		ResizeMethod:         lilliput.ImageOpsFit,
-		NormalizeOrientation: true,
-		EncodeOptions:        encodeOptions,
-	}
-	if header.Width() <= maxOutputResolution && header.Height() <= maxOutputResolution {
-		opts.Width = header.Width()
-		opts.Height = header.Height()
-		opts.ResizeMethod = lilliput.ImageOpsNoResize
-	}
-
-	// Transform the image
-	outputImage, err = ops.Transform(decoder, opts, outputImage)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to transcode image")
-	}
-	returnImageOps(ops)
-	return bytes.NewBuffer(outputImage), err
+	return bytes.NewBuffer(res.Body()), nil
 }
