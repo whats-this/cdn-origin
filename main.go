@@ -297,14 +297,25 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	switch object.ObjectType {
 	case 0: // file
 		ctx.SetUserValue("object_type", "file")
+		fPath := filepath.Join(viper.GetString("files.storageLocation"), *object.SHA256Hash)
+		ifNoneMatch := string(ctx.Request.Header.Peek("If-None-Match"))
+		if len(ifNoneMatch) > 2 {
+			ifNoneMatch = ifNoneMatch[1 : len(ifNoneMatch)-1]
+		}
 
 		// Thumbnails
 		if viper.GetBool("thumbnails.enable") && ctx.QueryArgs().Has("thumbnail") {
-			thumbnailKey := *object.MD5Hash
+			thumbnailKey := *object.SHA256Hash
 			if !thumbnailer.AcceptedMIMEType(*object.ContentType) {
 				ctx.SetStatusCode(fasthttp.StatusNotFound)
 				ctx.SetContentType("text/plain; charset=utf8")
 				fmt.Fprintf(ctx, "404 Not Found: %s?thumbnail (cannot generate thumbnail)", ctx.Path())
+				return
+			}
+
+			// Check for If-None-Match header
+			if ifNoneMatch == *object.SHA256Hash+"-thumb" {
+				ctx.SetStatusCode(fasthttp.StatusNotModified)
 				return
 			}
 
@@ -316,7 +327,6 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 					defer thumb.Close()
 				}
 				if err == thumbnailer.NoCachedCopy {
-					fPath := filepath.Join(viper.GetString("files.storageLocation"), key)
 					file, err := os.Open(fPath)
 					if file != nil {
 						defer file.Close()
@@ -352,7 +362,6 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 					return
 				}
 			} else {
-				fPath := filepath.Join(viper.GetString("files.storageLocation"), key)
 				file, err := os.Open(fPath)
 				if file != nil {
 					defer file.Close()
@@ -381,6 +390,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			ctx.SetStatusCode(fasthttp.StatusOK)
 			ctx.SetContentType("image/jpeg")
 			ctx.Response.Header.Set("Content-Disposition", fmt.Sprintf(`filename="%s.thumbnail.jpeg"`, key))
+			ctx.Response.Header.Set("ETag", fmt.Sprintf(`"%s-thumb"`, *object.SHA256Hash))
 			_, err = io.Copy(ctx, thumb)
 			if err != nil {
 				log.Warn().Err(err).Msg("failed to send thumbnail response")
@@ -390,14 +400,20 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			return
 		}
 
+		// Check for If-None-Match header
+		if ifNoneMatch == *object.SHA256Hash {
+			ctx.SetStatusCode(fasthttp.StatusNotModified)
+			return
+		}
+
 		// Serve file to client
-		fPath := filepath.Join(viper.GetString("files.storageLocation"), key)
 		ctx.SetStatusCode(fasthttp.StatusOK)
 		if object.ContentType != nil {
 			ctx.SetContentType(*object.ContentType)
 		} else {
 			ctx.SetContentType("application/octet-stream")
 		}
+		ctx.Response.Header.Set("ETag", fmt.Sprintf(`"%s"`, *object.SHA256Hash))
 		fasthttp.ServeFileUncompressed(ctx, fPath)
 
 	case 1: // redirect

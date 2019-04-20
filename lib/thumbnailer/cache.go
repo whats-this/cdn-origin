@@ -10,14 +10,14 @@ import (
 // thumbnail has a key, which uniquely identifies it. The key should be a unique
 // ID from a database or the original file's hash.
 type ThumbnailCache struct {
-	Directory string
+	Directory      string
 	ThumbnailerURL string
 }
 
 // NewThumbnailCache creates a new *ThumbnailCache.
 func NewThumbnailCache(directory, thumbnailerURL string) *ThumbnailCache {
 	return &ThumbnailCache{
-		Directory: directory,
+		Directory:      directory,
 		ThumbnailerURL: thumbnailerURL,
 	}
 }

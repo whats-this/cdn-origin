@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lib/pq"
@@ -16,9 +17,10 @@ func SelectObjectByBucketKey(bucket, key string) (Object, error) {
 	var objectType int
 	var deletedAt pq.NullTime
 	var deleteReason sql.NullString
-	var md5Hash sql.NullString
+	var md5Hash []byte
+	var sha256Hash []byte
 	err := DB.QueryRow(selectObjectByBucketKey, fmt.Sprintf("%s/%s", bucket, key)).
-		Scan(&contentType, &destURL, &objectType, &deletedAt, &deleteReason, &md5Hash)
+		Scan(&contentType, &destURL, &objectType, &deletedAt, &deleteReason, &md5Hash, &sha256Hash)
 	if err != nil {
 		return object, err
 	}
@@ -36,8 +38,15 @@ func SelectObjectByBucketKey(bucket, key string) (Object, error) {
 			object.DeleteReason = &deleteReason.String
 		}
 	}
-	if md5Hash.Valid {
-		object.MD5Hash = &md5Hash.String
+	if md5Hash != nil && len(md5Hash) == 16 {
+		object.MD5HashBytes = md5Hash
+		md5String := hex.EncodeToString(md5Hash)
+		object.MD5Hash = &md5String
+	}
+	if sha256Hash != nil && len(sha256Hash) == 32 {
+		object.SHA256HashBytes = sha256Hash
+		sha256String := hex.EncodeToString(sha256Hash)
+		object.SHA256Hash = &sha256String
 	}
 	object.ObjectType = objectType
 	return object, nil

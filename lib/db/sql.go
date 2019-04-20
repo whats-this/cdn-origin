@@ -7,7 +7,8 @@ SELECT
 	"type",
 	deleted_at,
 	delete_reason,
-	md5_hash
+	md5_hash,
+	sha256_hash
 FROM
 	objects
 WHERE
