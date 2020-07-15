@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"mime"
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -27,8 +29,16 @@ import (
 
 // Build config
 const (
-	configLocationUnix = "/etc/whats-this/cdn-origin/config.toml"
-	version            = "0.7.0"
+	configLocation = "/etc/whats-this/cdn-origin/config.toml"
+	version        = "0.8.0"
+)
+
+const (
+	rawParam = "_raw"
+)
+
+var (
+	discordBotRegex = regexp.MustCompile("(?i)discordbot")
 )
 
 // readCloserBuffer is a *bytes.Buffer that implements io.ReadCloser.
@@ -49,6 +59,19 @@ var redirectHTMLTemplate *template.Template
 
 // redirectPreviewHTML is the html/template template for generating redirect preview HTML.
 const redirectPreviewHTML = `<html><head><meta charset="UTF-8" /><title>Redirect Preview</title></head><body><p>This link goes to <code>{{.}}</code>. If you would like to visit this link, click <a href="{{.}}">here</a> to go to the destination.</p></body></html>`
+
+// discordHTML is the html/template template for generating Discord-fixing HTML.
+const discordHTML = `<html>
+	<head>
+		<meta property="twitter:card" content="summary_large_image" />
+		<meta property="twitter:image" content="{{.}}" />
+		<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+		<meta http-equiv="Pragma" content="no-cache" />
+		<meta http-equiv="Expires" content="0" />
+	</head>
+</html>`
+
+var discordHTMLTemplate *template.Template
 
 var redirectPreviewHTMLTemplate *template.Template
 
@@ -77,8 +100,8 @@ func init() {
 	// Flag configuration
 	flags := pflag.NewFlagSet("whats-this-cdn-origin", pflag.ExitOnError)
 	flags.IntP("log-level", "l", 1, "Set zerolog logging level (5=panic, 4=fatal, 3=error, 2=warn, 1=info, 0=debug)")
-	configFile := flags.StringP("config-file", "c", configLocationUnix,
-		fmt.Sprintf("Path to configuration file, defaults to %s", configLocationUnix))
+	configFile := flags.StringP("config-file", "c", configLocation,
+		fmt.Sprintf("Path to configuration file, defaults to %s", configLocation))
 	printConfig := flags.BoolP("print-config", "p", false, "Prints configuration and exits")
 	flags.Parse(os.Args)
 
@@ -120,7 +143,7 @@ func init() {
 
 	// Print configuration variables in alphabetical order
 	if *printConfig {
-		log.Info().Msg("Printing configuration values to Stdout")
+		log.Info().Msg("Printing configuration values to stdout")
 		settings := viper.AllSettings()
 		printConfiguration("", settings)
 		os.Exit(0)
@@ -158,6 +181,10 @@ func init() {
 	redirectPreviewHTMLTemplate, err = template.New("redirectPreviewHTML").Parse(redirectPreviewHTML)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to parse redirectPreviewHTML template")
+	}
+	discordHTMLTemplate, err = template.New("discordHTML").Parse(discordHTML)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to parse discordHTML template")
 	}
 }
 
@@ -297,6 +324,11 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	switch object.ObjectType {
 	case 0: // file
 		ctx.SetUserValue("object_type", "file")
+		if object.SHA256Hash == nil {
+			log.Warn().Str("key", key).Msg("encountered file object with NULL sha256_hash")
+			internalServerError(ctx)
+			return
+		}
 		fPath := filepath.Join(viper.GetString("files.storageLocation"), *object.SHA256Hash)
 		ifNoneMatch := string(ctx.Request.Header.Peek("If-None-Match"))
 		if len(ifNoneMatch) > 2 {
@@ -320,6 +352,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 			}
 
 			// Get thumbnail
+			// TODO: refactor this
 			var thumb io.ReadCloser
 			if viper.GetBool("thumbnails.cacheEnable") {
 				thumb, err = thumbnailCache.GetThumbnail(thumbnailKey)
@@ -396,8 +429,48 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 				log.Warn().Err(err).Msg("failed to send thumbnail response")
 				ctx.Response.Header.Del("Content-Disposition")
 				internalServerError(ctx)
+				return
 			}
 			return
+		}
+
+		// Discord workaround. They're hiding direct image embeds, so we
+		// serve HTML pages with metadata showing the image.
+		if object.ContentType != nil && discordBotRegex.Match(ctx.Request.Header.UserAgent()) && !ctx.QueryArgs().Has(rawParam) {
+			typ, _, err := mime.ParseMediaType(*object.ContentType)
+			if err != nil {
+				log.Warn().Err(err).Msg("failed to parse content-type of file")
+				internalServerError(ctx)
+				return
+			}
+
+			if typ == "image/jpeg" || typ == "image/jpg" || typ == "image/png" || typ == "image/gif" {
+				var (
+					host = string(ctx.Request.Header.Peek("Host"))
+					// Assume anything Discord hits is HTTPS
+					// anyways.
+					scheme = "https"
+				)
+				if strings.Contains(host, "localhost:") {
+					scheme = "http"
+				}
+
+				url := fmt.Sprintf("%v://%s%s?%v=true", scheme, ctx.Request.Header.Peek("Host"), ctx.Path(), rawParam)
+
+				// Make it so CloudFlare won't cache it.
+				ctx.SetStatusCode(fasthttp.StatusOK)
+				ctx.Response.Header.SetContentType("text/html; charset=utf8")
+				ctx.Response.Header.Add("Cache-Control", "no-cache, no-store, must-revalidate")
+				ctx.Response.Header.Add("Pragma", "no-cache")
+				ctx.Response.Header.Add("Expires", "0")
+				err = discordHTMLTemplate.Execute(ctx, url)
+				if err != nil {
+					log.Warn().Err(err).Msg("failed to execute discord html template on discordbot connection")
+					internalServerError(ctx)
+					return
+				}
+				return
+			}
 		}
 
 		// Check for If-None-Match header
@@ -432,7 +505,6 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		} else {
 			err = redirectHTMLTemplate.Execute(ctx, object.DestURL)
 		}
-
 		if err != nil {
 			log.Warn().Err(err).
 				Str("dest_url", *object.DestURL).
