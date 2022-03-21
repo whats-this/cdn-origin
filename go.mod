@@ -10,7 +10,6 @@ require (
 	github.com/rs/zerolog v1.11.0
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.3.1
-	github.com/valyala/fasthttp v1.2.0
-	golang.org/x/sys v0.0.0-20190222171317-cd391775e71e // indirect
+	github.com/valyala/fasthttp v1.34.0
 	gopkg.in/olivere/elastic.v5 v5.0.79
 )
